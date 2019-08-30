@@ -11,6 +11,22 @@ type BitSlice = bitvec::slice::BitSlice<BigEndian, u32>;
 /// A 32-bit posit number with 2 exponent bits
 pub struct Posit32(pub u32);
 
+#[derive(Copy, Clone)]
+pub struct Posit32Unpacked<'a> {
+    sign: bool,
+    regime: &'a BitSlice,
+    exp: &'a BitSlice,
+    frac: &'a BitSlice,
+}
+
+impl<'a> Posit32Unpacked<'a> {
+    pub fn regime_convert(&self) -> i8 {
+        let regime_sign = self.regime[0];
+        let length = self.regime.len() as i8 - 1;
+        if regime_sign { length - 1 } else { -length }
+    }
+}
+
 impl Posit32 {
     const ES: usize = 2;
     const USEED: usize = 16;
@@ -47,7 +63,7 @@ impl Posit32 {
             if self.bit(30 - i) == sign {
                 power += 1
             } else {
-                break
+                break;
             }
         }
         if sign {
@@ -60,32 +76,62 @@ impl Posit32 {
         self.0.as_bitslice()
     }
 
-    fn decompose(&self) -> (bool, i8, &BitSlice, &BitSlice) {
+    fn decompose(&self) -> Posit32Unpacked {
         let bits = self.bits();
         let sign = !bits[0];
-        let mut i: i8 = 0;
-        let mut regime_sign = bits[1];
+        let mut index: usize = 1;
+        let regime_sign = bits[index];
         for l in bits[2..].iter() {
-            i += 1;
+            index += 1;
             if l != regime_sign {
                 break;
             }
         }
-        let regime = if regime_sign { i - 1 } else { -i };
-        let i = i as usize + 1;
-        let exp = &bits[i + 1..];
-        let frac = &exp[exp.len().min(2) + 1..];
+        let regime = &bits[1..index+1];
+        let exp = &bits[index+1..];
+        let frac = &exp[exp.len().min(2)..];
         let exp = &exp[..exp.len().min(2)];
-        (sign, regime, exp, frac)
+        Posit32Unpacked {
+            sign,
+            regime,
+            exp,
+            frac,
+        }
     }
 }
 
 #[test]
 fn test_decompose() {
     let p = Posit32::ZERO;
-    let (sign, regime, exp, frac) = p.decompose();
+    let Posit32Unpacked {
+        sign,
+        regime,
+        exp,
+        frac,
+    } = p.decompose();
+
+    let zero_slice: &BitSlice = (0 as u32).as_bitslice();
+    let expected_regime = &zero_slice[1..];
+    let expected_exp = &zero_slice[1..1];
+    let expected_frac = &zero_slice[1..1];
+
     assert_eq!(sign, true);
-    println!("{:?} {:?} {:?}", regime, exp, frac);
+    assert_eq!(regime, expected_regime);
+    assert_eq!(exp, expected_exp);
+    assert_eq!(frac, expected_frac);
+}
+
+#[test]
+fn test_decompose_real() {
+    let p = Posit32(0x76000000);
+    let p_unpacked= p.decompose();
+
+    assert_eq!(p_unpacked.sign, true);
+    assert_eq!(p_unpacked.regime, &p.bits()[1..5]);
+    assert_eq!(p_unpacked.exp, &p.bits()[5..7]);
+    assert_eq!(p_unpacked.frac, &p.bits()[7..]);
+
+    assert_eq!(p_unpacked.regime_convert(), 2);
 }
 
 impl PartialEq<Posit32> for Posit32 {
@@ -99,13 +145,13 @@ impl Add<Posit32> for Posit32 {
 
     fn add(self, rhs: Posit32) -> Self::Output {
         if self == Self::ZERO {
-            return rhs
+            return rhs;
         }
         if rhs == Self::ZERO {
-            return self
+            return self;
         }
         if self == Self::NAR || rhs == Self::NAR {
-            return Self::NAR
+            return Self::NAR;
         }
         self
     }
@@ -140,7 +186,7 @@ mod tests_posit;
 
 #[no_mangle]
 #[doc(hidden)]
-pub extern fn posit32_add(lhs: Posit32, rhs: Posit32) -> Posit32 {
+pub extern "C" fn posit32_add(lhs: Posit32, rhs: Posit32) -> Posit32 {
     lhs + rhs
 }
 

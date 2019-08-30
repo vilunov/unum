@@ -1,6 +1,6 @@
+use cbindgen::{Config, ExportConfig, ItemType, Language};
 use std::env;
 use std::path::PathBuf;
-use cbindgen::{Config, Language, ExportConfig, ItemType};
 
 fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
