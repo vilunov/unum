@@ -1,6 +1,6 @@
 use std::ops::{Add, Mul};
 
-use bitvec::bits::Bits;
+use bitvec::bits::{Bits, BitsMut};
 use bitvec::cursor::BigEndian;
 
 type BitSlice = bitvec::slice::BitSlice<BigEndian, u32>;
@@ -75,6 +75,9 @@ impl Posit32 {
     fn bits(&self) -> &BitSlice {
         self.0.as_bitslice()
     }
+    fn mut_bits(&mut self) -> &mut BitSlice {
+        self.0.as_mut_bitslice()
+    }
 
     fn decompose(&self) -> Posit32Unpacked {
         let bits = self.bits();
@@ -103,22 +106,14 @@ impl Posit32 {
 #[test]
 fn test_decompose() {
     let p = Posit32::ZERO;
-    let Posit32Unpacked {
-        sign,
-        regime,
-        exp,
-        frac,
-    } = p.decompose();
+    let p_unpacked = p.decompose();
 
     let zero_slice: &BitSlice = (0 as u32).as_bitslice();
-    let expected_regime = &zero_slice[1..];
-    let expected_exp = &zero_slice[1..1];
-    let expected_frac = &zero_slice[1..1];
 
-    assert_eq!(sign, true);
-    assert_eq!(regime, expected_regime);
-    assert_eq!(exp, expected_exp);
-    assert_eq!(frac, expected_frac);
+    assert_eq!(p_unpacked.sign, true);
+    assert_eq!(p_unpacked.regime, &zero_slice[1..]);
+    assert_eq!(p_unpacked.exp, &zero_slice[1..1]);
+    assert_eq!(p_unpacked.frac, &zero_slice[1..1]);
 }
 
 #[test]
@@ -161,7 +156,13 @@ impl Mul<Posit32> for Posit32 {
     type Output = Self;
 
     fn mul(self, rhs: Posit32) -> Self::Output {
-        unimplemented!()
+        let lhs = self.decompose();
+        let rhs = rhs.decompose();
+        let mut i = Posit32(0);
+        let bits: &mut BitSlice = i.mut_bits();
+        bits[0] = lhs.sign != rhs.sign;
+
+        i
     }
 }
 
@@ -177,8 +178,8 @@ impl Default for Posit32 {
     }
 }
 
-#[cfg(test)]
-mod tests_float;
+//#[cfg(test)]
+//mod tests_float;
 #[cfg(test)]
 mod tests_posit;
 
