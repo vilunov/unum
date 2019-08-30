@@ -1,7 +1,8 @@
-use std::ops::{Add, Mul};
+use std::ops::{Add, Deref, Mul, ShlAssign};
 
 use bitvec::bits::{Bits, BitsMut};
 use bitvec::cursor::BigEndian;
+use bitvec::prelude::*;
 
 type BitSlice = bitvec::slice::BitSlice<BigEndian, u32>;
 
@@ -20,10 +21,42 @@ pub struct Posit32Unpacked<'a> {
 }
 
 impl<'a> Posit32Unpacked<'a> {
+    const OUT_LENGTH: u32 = 32;
+
     pub fn regime_convert(&self) -> i8 {
         let regime_sign = self.regime[0];
         let length = self.regime.len() as i8 - 1;
-        if regime_sign { length - 1 } else { -length }
+        if regime_sign {
+            length - 1
+        } else {
+            -length
+        }
+    }
+
+    pub fn compose(&self) -> Posit32 {
+        let mut out: u32 = 0;
+        let mut index: u32 = 1;
+
+        fn set_bits(initial: u32, idx_start: u32, length: u32, slice: &BitSlice) -> (u32, u32) {
+            let mut out = initial;
+            let mut idx = idx_start;
+            for l in slice.iter() {
+                if idx != length {
+                    out ^= ((l as u32) << (length - idx));
+                    idx += 1;
+                }
+            }
+            (out, idx)
+        }
+
+        out &= 1 << (Self::OUT_LENGTH - index);
+        index += 1;
+
+        let (out, index) = set_bits(out, index, Self::OUT_LENGTH, self.regime);
+        let (out, index) = set_bits(out, index, Self::OUT_LENGTH, self.exp);
+        let (out, index) = set_bits(out, index, Self::OUT_LENGTH, self.frac);
+
+        Posit32(out)
     }
 }
 
@@ -90,8 +123,8 @@ impl Posit32 {
                 break;
             }
         }
-        let regime = &bits[1..index+1];
-        let exp = &bits[index+1..];
+        let regime = &bits[1..index + 1];
+        let exp = &bits[index + 1..];
         let frac = &exp[exp.len().min(2)..];
         let exp = &exp[..exp.len().min(2)];
         Posit32Unpacked {
@@ -119,7 +152,7 @@ fn test_decompose() {
 #[test]
 fn test_decompose_real() {
     let p = Posit32(0x76000000);
-    let p_unpacked= p.decompose();
+    let p_unpacked = p.decompose();
 
     assert_eq!(p_unpacked.sign, true);
     assert_eq!(p_unpacked.regime, &p.bits()[1..5]);
@@ -127,6 +160,20 @@ fn test_decompose_real() {
     assert_eq!(p_unpacked.frac, &p.bits()[7..]);
 
     assert_eq!(p_unpacked.regime_convert(), 2);
+}
+
+#[test]
+fn test_compose() {
+    let p = Posit32::ZERO;
+
+    assert_eq!(p, p.decompose().compose());
+}
+
+#[test]
+fn test_compose_real() {
+    let p = Posit32(0x76000000);
+
+    assert_eq!(p, p.decompose().compose());
 }
 
 impl PartialEq<Posit32> for Posit32 {
@@ -158,11 +205,11 @@ impl Mul<Posit32> for Posit32 {
     fn mul(self, rhs: Posit32) -> Self::Output {
         let lhs = self.decompose();
         let rhs = rhs.decompose();
-        let mut i = Posit32(0);
-        let bits: &mut BitSlice = i.mut_bits();
-        bits[0] = lhs.sign != rhs.sign;
+        let mut base = Posit32(0).decompose();
 
-        i
+        base.sign = lhs.sign != rhs.sign;
+
+        base.compose()
     }
 }
 
