@@ -1,4 +1,5 @@
-use std::ops::{Add, Deref, Mul, ShlAssign};
+use std::ops::{Add, Deref, Mul, ShlAssign, BitXor, Shl, BitAnd};
+use std::cmp;
 
 use bitvec::bits::{Bits, BitsMut};
 use bitvec::cursor::BigEndian;
@@ -18,6 +19,62 @@ pub struct Posit32Unpacked<'a> {
     regime: &'a BitSlice,
     exp: &'a BitSlice,
     frac: &'a BitSlice,
+}
+
+fn regime_to_slice(num: i8) -> BitVec<BigEndian, u32> {
+    let mut out = BitVec::<BigEndian, u32>::new();
+    if num >= 0 {
+        for _ in 1..=num {
+            out.push(true);
+        }
+        out.push(true);
+        out.push(false);
+        out
+    } else {
+        for _ in 1..=-num {
+            out.push(false);
+        }
+        out.push(true);
+        out
+    }
+}
+
+fn slice_to_u32(slice: &BitSlice) -> u32 {
+    let mut out: u32 = 0;
+    for (i, l) in slice.iter().enumerate() {
+        out ^= (l as u32) << (i as u32);
+    }
+    out
+}
+
+#[test]
+fn test_regime_to_slice_1() {
+    let regime = regime_to_slice(4);
+    let expected = bitvec![1,1,1,1,1,0];
+
+    assert_eq!(regime, expected.as_bitslice())
+}
+
+#[test]
+fn test_regime_to_slice_2() {
+    let regime = regime_to_slice(-3);
+    let expected = bitvec![0,0,0,1];
+
+    assert_eq!(regime, expected.as_bitslice())
+}
+
+#[test]
+fn test_slice_to_u32() {
+    let mut vec: BitVec<BigEndian, u32> = BitVec::new();
+    vec.push(false);
+    vec.push(true);
+    vec.push(true);
+    vec.push(false);
+
+    let res = slice_to_u32(vec.as_bitslice());
+    let expected: u32 = 6;
+
+    assert_eq!(res, expected);
 }
 
 impl<'a> Posit32Unpacked<'a> {
@@ -42,7 +99,7 @@ impl<'a> Posit32Unpacked<'a> {
             let mut idx = idx_start;
             for l in slice.iter() {
                 if idx != length {
-                    out ^= ((l as u32) << (length - idx));
+                    out ^= (l as u32) << (length - idx);
                     idx += 1;
                 }
             }
@@ -208,6 +265,34 @@ impl Mul<Posit32> for Posit32 {
         let mut base = Posit32(0).decompose();
 
         base.sign = lhs.sign != rhs.sign;
+
+        let left_frac =  slice_to_u32(lhs.frac);
+        let right_frac = slice_to_u32(rhs.frac);
+
+        let shifted_left = left_frac << (rhs.frac.len() as u32);
+        let shifted_right = right_frac << (lhs.frac.len() as u32);
+        let frac_mult = left_frac * right_frac;
+
+        let mut res_frac = shifted_left + shifted_right + frac_mult;
+
+        let max_frac: u32 = 1 << cmp::min((rhs.frac.len() as u32) + (lhs.frac.len() as u32), 31);
+        let exp_carry: u32 = if res_frac > max_frac { res_frac -= max_frac; 1 } else { 0 };
+        base.frac = res_frac.as_bitslice();
+
+        let left_exp = slice_to_u32(lhs.exp);
+        let right_exp = slice_to_u32(rhs.exp);
+
+        let mut res_exp = left_exp + right_exp + exp_carry;
+
+        let max_exp: u32 = 1 << (Posit32::ES as u32);
+        let reg_carry: i8 = if res_exp > max_exp { res_exp -= max_exp; 1 } else { 0 };
+        base.exp = res_exp.as_bitslice();
+
+        let left_reg = lhs.regime_convert();
+        let right_reg = rhs.regime_convert();
+
+        let res_regime = regime_to_slice(left_reg + right_reg + reg_carry);
+        base.regime = res_regime.as_bitslice();
 
         base.compose()
     }
