@@ -29,6 +29,7 @@ fn init_v2(a: f64) -> Vector6<f64> {
 }
 
 #[test]
+#[should_panic]
 fn test_a5() {
     let x = init_v1(5.0);
     for &i in &BS {
@@ -40,6 +41,7 @@ fn test_a5() {
 }
 
 #[test]
+#[should_panic]
 fn test_a10() {
     let x = init_v1(10.0);
     for &i in &BS {

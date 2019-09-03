@@ -31,6 +31,7 @@ fn parabola(x: f64) -> f64 {
 }
 
 #[test]
+#[should_panic]
 fn test_minima() {
     let minima = half_divide_method(-2.0, 4.65, 0.0001, parabola, LIMIT);
     println!(

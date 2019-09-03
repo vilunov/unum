@@ -87,6 +87,18 @@ impl Posit {
         }
     }
 
+    pub fn pow(mut self, mut i: usize) -> Self {
+        let mut res = Posit::one();
+        while i > 0 {
+            if i % 2 == 1 {
+                res = res * self.clone();
+            }
+            self = self.clone() * self;
+            i /= 2;
+        }
+        res
+    }
+
     pub fn prune(&mut self) {
         while self.bits.last() == Some(false) {
             let _ = self.bits.pop();
@@ -212,33 +224,41 @@ impl Mul<Posit> for Posit {
         let r_frac: BitVec = r_bits.collect();
         let l_fs = l_frac.len();
         let r_fs = r_frac.len();
+        let mut o_fs = l_fs + r_fs;
         let mut o_frac: BitVec = {
             let mut o_frac = l_frac.clone();
             o_frac.extend(bitvec![0; r_fs]);
+
             let mut tmp = r_frac.clone();
             tmp.extend(bitvec![0; l_fs]);
             o_frac += tmp; // makes bitvec bigger by adding bits at the start if necessary
-            for (idx, _) in r_frac.iter().rev().enumerate().filter(|(_, flag)| *flag) {
+
+            // Add f1*f2
+            let mut tmp = l_frac.clone();
+            for flag in r_frac.iter().rev() {
                 dbg!(&o_frac);
-                o_frac += l_frac.clone() << idx;
+                if flag {
+                    o_frac += tmp.clone();
+                }
+                tmp.push(false);
             }
+
+            // Add leading one
+            let mut kek = bitvec![1];
+            kek.extend(bitvec![0; l_fs + r_fs]);
+            dbg!(&kek);
+            o_frac += kek;
             o_frac
         };
         dbg!(l_fs, r_fs, &l_frac, &r_frac, &o_frac);
 
         // Carry fraction overflow to exponent
-        while o_frac.len() > (l_fs + r_fs) {
-            o_exp += 1;
-            let mut sub = bitvec![1];
-            sub.extend(bitvec![0; l_fs + r_fs]);
-            dbg!(&sub);
-            o_frac -= sub;
-            if !o_frac[0] {
-                o_frac <<= 1
-            }
-            o_exp += 1;
-            dbg!(&o_frac);
+        if o_frac.len() > (o_fs + 1) {
+            o_exp += o_frac.len() - o_fs - 1;
+            o_fs = o_frac.len() - 1;
         }
+        // Remove leading one
+        o_frac <<= 1;
 
         // Carry exponent to regime if overflowed
         while o_exp >= (1 << ES) {
@@ -386,7 +406,7 @@ impl Sub<Posit> for Posit {
             return Posit::zero();
         }
         if self == Posit::zero() {
-            return rhs;
+            return -rhs;
         }
         if rhs == Posit::zero() {
             return self;
@@ -394,11 +414,12 @@ impl Sub<Posit> for Posit {
         if self == Posit::nar() || rhs == Posit::nar() {
             return Posit::nar();
         }
-        if self < rhs {
+        let sign = if (self < rhs) != self.is_negative() {
             mem::swap(&mut self, &mut rhs);
-        }
-
-        let sign = self.is_negative();
+            !self.is_negative()
+        } else {
+            self.is_negative()
+        };
 
         // Regime
         let l_regime = self.regime();
@@ -605,20 +626,16 @@ impl From<f64> for Posit {
             (bits & 0xfffffffffffff) | 0x10000000000000
         };
         exponent -= 1023;
-        dbg!(sign, exponent, mantissa);
 
         let mantissa: BitVec = {
             let mut m = BitVec::new();
             m.extend(mantissa.as_bitslice::<BigEndian>());
             m <<= 11;
-            dbg!(&m);
             let shift = m.iter().position(|i| i).unwrap_or(0);
-            dbg!(shift, m.len());
             m <<= shift + 1;
             exponent += shift as i16;
             m
         };
-        dbg!(sign, exponent, &mantissa);
 
         let exp = exponent & ((1 << ES as i16) - 1);
         let regime = exponent >> ES as i16;
@@ -639,197 +656,11 @@ impl From<f64> for Posit {
     }
 }
 
-// exports
-#[no_mangle]
-#[doc(hidden)]
-pub extern "C" fn posit_new() -> *mut u8 {
-    Box::into_raw(Box::new(Posit { bits: bitvec![] })) as *mut _
-}
-
-#[no_mangle]
-#[doc(hidden)]
-pub unsafe extern "C" fn posit_neg(p: *mut u8) -> *mut u8 {
-    let p = (p as *mut Posit).as_ref().unwrap();
-    let r = Box::new(-p.clone());
-    Box::into_raw(r) as *mut _
-}
-
-#[no_mangle]
-#[doc(hidden)]
-pub unsafe extern "C" fn posit_add(lhs: *mut u8, rhs: *mut u8) -> *mut u8 {
-    let lhs = (lhs as *mut Posit).as_ref().unwrap();
-    let rhs = (rhs as *mut Posit).as_ref().unwrap();
-    let r = Box::new(lhs.clone() + rhs.clone());
-    Box::into_raw(r) as *mut _
-}
-
-#[no_mangle]
-#[doc(hidden)]
-pub unsafe extern "C" fn posit_sub(lhs: *mut u8, rhs: *mut u8) -> *mut u8 {
-    let lhs = (lhs as *mut Posit).as_ref().unwrap();
-    let rhs = (rhs as *mut Posit).as_ref().unwrap();
-    let r = Box::new(lhs.clone() - rhs.clone());
-    Box::into_raw(r) as *mut _
-}
-
-#[no_mangle]
-#[doc(hidden)]
-pub unsafe extern "C" fn posit_mul(lhs: *mut u8, rhs: *mut u8) -> *mut u8 {
-    let lhs = (lhs as *mut Posit).as_ref().unwrap();
-    let rhs = (rhs as *mut Posit).as_ref().unwrap();
-    let r = Box::new(lhs.clone() * rhs.clone());
-    Box::into_raw(r) as *mut _
-}
-
-#[no_mangle]
-#[doc(hidden)]
-pub unsafe extern "C" fn posit_div(lhs: *mut u8, rhs: *mut u8) -> *mut u8 {
-    let lhs = (lhs as *mut Posit).as_ref().unwrap();
-    let rhs = (rhs as *mut Posit).as_ref().unwrap();
-    let r = Box::new(lhs.clone() / rhs.clone());
-    Box::into_raw(r) as *mut _
-}
-
-#[no_mangle]
-#[doc(hidden)]
-pub unsafe extern "C" fn posit_free(p: *mut u8) {
-    Box::from_raw(p as *mut Posit);
-}
-
-//#[cfg(test)]
-//mod tests_float;
-//#[cfg(test)]
-//mod tests_posit;
+mod exports;
 
 #[cfg(test)]
-mod inner_tests {
-    use super::*;
-
-    macro_rules! test {
-        ($name: ident: ($left: expr) = ($right: expr)) => {
-            #[test]
-            fn $name() {
-                assert_eq!($left, $right);
-            }
-        };
-        ($name: ident: ($left: expr) * ($right: expr) = ($expected: expr)) => {
-            #[test]
-            fn $name() {
-                {
-                    let lhs = Posit { bits: $left };
-                    let rhs = Posit { bits: $right };
-                    let res = lhs * rhs;
-                    assert_eq!(res.bits, $expected);
-                }
-                {
-                    let lhs = Posit { bits: $right };
-                    let rhs = Posit { bits: $left };
-                    let res = lhs * rhs;
-                    assert_eq!(res.bits, $expected);
-                }
-            }
-        };
-        ($name: ident: ($left: expr) / ($right: expr) = ($expected: expr)) => {
-            #[test]
-            fn $name() {
-                let lhs = Posit { bits: $left };
-                let rhs = Posit { bits: $right };
-                let res = lhs / rhs;
-                assert_eq!(res.bits, $expected);
-            }
-        };
-        ($name: ident: ($left: expr) + ($right: expr) = ($expected: expr)) => {
-            #[test]
-            fn $name() {
-                {
-                    let lhs = Posit { bits: $left };
-                    let rhs = Posit { bits: $right };
-                    let res = lhs + rhs;
-                    assert_eq!(res.bits, $expected);
-                }
-                {
-                    let lhs = Posit { bits: $right };
-                    let rhs = Posit { bits: $left };
-                    let res = lhs + rhs;
-                    assert_eq!(res.bits, $expected);
-                }
-                {
-                    let lhs = Posit { bits: $expected };
-                    let rhs = Posit { bits: $left };
-                    let res = lhs - rhs;
-                    assert_eq!(res.bits, $right);
-                }
-                {
-                    let lhs = Posit { bits: $expected };
-                    let rhs = Posit { bits: $right };
-                    let res = lhs - rhs;
-                    assert_eq!(res.bits, $left);
-                }
-            }
-        };
-    }
-
-    test! { convert_1:
-        (Posit::from(0.625_f64).bits) =
-        (bitvec![0, 0, 1, 1, 1, 0, 1])
-    }
-
-    test! { convert_2:
-        (Posit::from(10e-8).bits[..13]) =
-        (bitvec![0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1])
-    }
-
-    test! { multiplication_1:
-        (bitvec![0, 1, 0, 0, 1, 0]) *
-        (bitvec![0, 1, 0, 0, 0, 1]) =
-        (bitvec![0, 1, 0, 0, 1, 1])
-    }
-
-    test! { multiplication_2:
-        (bitvec![0, 1, 0, 1, 1]) *
-        (bitvec![0, 1, 0, 1, 1, 1]) =
-        (bitvec![0, 1, 1, 0, 1, 0, 1])
-    }
-
-    test! { multiplication_3:
-        (bitvec![0, 1, 0, 0, 1, 0]) *
-        (bitvec![0, 1, 0, 0, 0, 1]) =
-        (bitvec![0, 1, 0, 0, 1, 1])
-    }
-
-    test! { division_1:
-        (bitvec![0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) /
-        (bitvec![0, 1, 0, 0, 1, 1]) =
-        (bitvec![0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1])
-    }
-
-    test! { division_2:
-        (bitvec![0, 1, 0, 1, 1]) /
-        (bitvec![0, 1, 0, 1, 0]) =
-        (bitvec![0, 1, 0, 0, 1])
-    }
-
-    test! { add_sub_zero:
-        (bitvec![0, 1, 0, 0, 1]) +
-        (Posit::zero().bits) =
-        (bitvec![0, 1, 0, 0, 1])
-    }
-
-    test! { add_sub_1:
-        (bitvec![0, 1, 0, 0, 1]) +
-        (bitvec![0, 1, 0, 0, 0, 1]) =
-        (bitvec![0, 1, 0, 0, 1, 1, 1])
-    }
-
-    test! { add_sub_2:
-        (bitvec![0, 1, 0, 0, 1]) +
-        (bitvec![0, 1, 0, 0, 1, 1]) =
-        (bitvec![0, 1, 0, 1, 0, 0, 1])
-    }
-
-    test! { add_sub_3:
-        (bitvec![0, 1, 0, 1, 1]) +
-        (bitvec![0, 1, 0, 1, 1, 1]) =
-        (bitvec![0, 1, 1, 0, 0, 0, 0, 1])
-    }
-}
+mod tests_float;
+#[cfg(test)]
+mod tests_posit;
+#[cfg(test)]
+mod inner_tests;
