@@ -191,19 +191,11 @@ impl Mul<Posit> for Posit {
         }
 
         let sign = self.bits[0] != rhs.bits[0];
-        dbg!(sign);
 
         // Regimes
         let l_regime = self.regime();
         let r_regime = rhs.regime();
         let mut o_regime = l_regime + r_regime;
-        dbg!(
-            l_regime,
-            r_regime,
-            o_regime,
-            l_regime.bits(),
-            r_regime.bits()
-        );
 
         // Bits
         let mut l_bits = self.bits.into_iter().skip(1).skip(l_regime.bits());
@@ -217,14 +209,12 @@ impl Mul<Posit> for Posit {
             r_exp = r_exp * 2 + r_bits.next().unwrap_or(false) as usize;
         }
         let mut o_exp = l_exp + r_exp;
-        dbg!(l_exp, r_exp, o_exp);
 
         // Fractions
         let l_frac: BitVec = l_bits.collect();
         let r_frac: BitVec = r_bits.collect();
         let l_fs = l_frac.len();
         let r_fs = r_frac.len();
-        let mut o_fs = l_fs + r_fs;
         let mut o_frac: BitVec = {
             let mut o_frac = l_frac.clone();
             o_frac.extend(bitvec![0; r_fs]);
@@ -236,7 +226,6 @@ impl Mul<Posit> for Posit {
             // Add f1*f2
             let mut tmp = l_frac.clone();
             for flag in r_frac.iter().rev() {
-                dbg!(&o_frac);
                 if flag {
                     o_frac += tmp.clone();
                 }
@@ -246,16 +235,13 @@ impl Mul<Posit> for Posit {
             // Add leading one
             let mut kek = bitvec![1];
             kek.extend(bitvec![0; l_fs + r_fs]);
-            dbg!(&kek);
             o_frac += kek;
             o_frac
         };
-        dbg!(l_fs, r_fs, &l_frac, &r_frac, &o_frac);
 
         // Carry fraction overflow to exponent
-        if o_frac.len() > (o_fs + 1) {
-            o_exp += o_frac.len() - o_fs - 1;
-            o_fs = o_frac.len() - 1;
+        if o_frac.len() > (l_fs + r_fs + 1) {
+            o_exp += o_frac.len() - l_fs - r_fs - 1;
         }
         // Remove leading one
         o_frac <<= 1;
@@ -269,7 +255,6 @@ impl Mul<Posit> for Posit {
                 };
             o_exp -= 1 << ES;
         }
-        dbg!(o_regime, o_exp);
 
         // Combine the result
         let mut result = BitVec::new();
@@ -325,7 +310,6 @@ impl Add<Posit> for Posit {
         let l_regime = self.regime();
         let r_regime = rhs.regime();
         let regime = l_regime + (-r_regime);
-        dbg!(regime);
 
         // Bits
         let mut l_bits = self.bits.into_iter().skip(1).skip(l_regime.bits());
@@ -338,11 +322,7 @@ impl Add<Posit> for Posit {
             l_exp = l_exp * 2 + l_bits.next().unwrap_or(false) as usize;
             r_exp = r_exp * 2 + r_bits.next().unwrap_or(false) as usize;
         }
-        dbg!(l_exp, r_exp);
-
-        //Shift
         let shift = (regime.value << ES) + l_exp - r_exp;
-        dbg!(shift);
 
         // Fractions
         let mut l_frac: BitVec = bitvec![1];
@@ -360,7 +340,6 @@ impl Add<Posit> for Posit {
         } else {
             r_frac.extend(bitvec![0; fs - r_fs]);
         }
-        dbg!(&l_frac, &r_frac);
         let o_frac = l_frac + r_frac;
         let mut o_exp = l_exp;
         let mut o_regime = l_regime;
@@ -378,7 +357,6 @@ impl Add<Posit> for Posit {
                 o_exp -= 1 << ES;
             }
         }
-        dbg!(o_regime, o_exp, &o_frac);
 
         // Combine the result
         let mut result = BitVec::new();
@@ -425,7 +403,6 @@ impl Sub<Posit> for Posit {
         let l_regime = self.regime();
         let r_regime = rhs.regime();
         let regime = l_regime + (-r_regime);
-        dbg!(regime);
 
         // Bits
         let mut l_bits = self.bits.into_iter().skip(1).skip(l_regime.bits());
@@ -438,11 +415,9 @@ impl Sub<Posit> for Posit {
             l_exp = l_exp * 2 + l_bits.next().unwrap_or(false) as usize;
             r_exp = r_exp * 2 + r_bits.next().unwrap_or(false) as usize;
         }
-        dbg!(l_exp, r_exp);
 
         //Shift
         let shift = (regime.value << ES) + l_exp - r_exp;
-        dbg!(shift);
 
         // Fractions
         let mut l_frac: BitVec = bitvec![0, 1];
@@ -460,22 +435,17 @@ impl Sub<Posit> for Posit {
         } else {
             r_frac.extend(bitvec![0; fs - r_fs]);
         }
-        dbg!(&l_frac, &r_frac);
         let mut o_frac = l_frac - r_frac;
         let mut o_exp = l_exp;
         let mut o_regime = l_regime;
         let mut o_exp_shift = 0;
         if o_frac[0] {
-            dbg!(&o_frac);
             o_exp_shift += 1;
-            dbg!(&o_frac);
         }
         o_frac <<= 1;
         while !o_frac[0] {
-            dbg!(&o_frac);
             o_exp_shift += 1;
             o_frac <<= 1;
-            dbg!(&o_frac);
         }
         while o_exp_shift > 0 {
             if o_exp_shift >= o_exp + 1 {
@@ -491,7 +461,6 @@ impl Sub<Posit> for Posit {
                 o_exp_shift = 0;
             }
         }
-        dbg!(o_regime, o_exp, &o_frac);
 
         // Combine the result
         let mut result = BitVec::new();
@@ -520,19 +489,11 @@ impl Div<Posit> for Posit {
         }
 
         let sign = self.bits[0] != rhs.bits[0];
-        dbg!(sign);
 
         // Regimes
         let l_regime = self.regime();
         let r_regime = rhs.regime();
         let mut o_regime = l_regime + (-r_regime);
-        dbg!(
-            l_regime,
-            r_regime,
-            o_regime,
-            l_regime.bits(),
-            r_regime.bits()
-        );
 
         // Bits
         let mut l_bits = self.bits.into_iter().skip(1).skip(l_regime.bits());
@@ -555,13 +516,12 @@ impl Div<Posit> for Posit {
                 };
             (1 << ES) + l_exp - r_exp
         };
-        dbg!(l_exp, r_exp, o_exp);
 
         // Fractions
         let mut l_frac: BitVec = l_bits.collect();
         let r_frac: BitVec = r_bits.collect();
         let r_fs = r_frac.len();
-        l_frac.extend(bitvec![0; r_fs]);
+        l_frac.extend(bitvec![0; r_fs + 16]);
         let l_fs = l_frac.len();
 
         let o_frac = {
@@ -572,8 +532,6 @@ impl Div<Posit> for Posit {
             let mut divisor = bitvec![1];
             divisor.extend(bitvec![0; r_fs]);
             divisor += r_frac.clone();
-
-            dbg!(&divisor, &dividend);
 
             let iters = dividend.len().max(divisor.len()) - divisor.len();
             divisor.extend(bitvec![0; iters]);
@@ -587,11 +545,9 @@ impl Div<Posit> for Posit {
                 }
                 let _ = divisor.pop();
                 divisor >>= 1;
-                dbg!(&dividend, &divisor, &o_fs);
             }
             o_fs
         };
-        dbg!(l_fs, r_fs, &l_frac, &r_frac, &o_frac);
 
         // Combine the result
         let mut result = BitVec::new();

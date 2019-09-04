@@ -1,15 +1,21 @@
-use nalgebra::Vector6;
+use lazy_static::lazy_static;
 
-const EPS: f64 = 10e-18;
-const RES: f64 = 1.644725755214774951;
+use crate::Posit;
+
 const LIMIT: u32 = 4801;
+lazy_static! {
+    static ref RES: Posit = Posit::from(1.644725755214774951);
+    static ref EPS: Posit = Posit::from(10e-18);
+}
 
 #[test]
 fn test_sum() {
-    let mut sum = 0.0;
+    let mut sum = Posit::zero();
     for i in 1..LIMIT {
-        sum += (i as f64).powf(-2.0);
+        sum = sum + Posit::from(1.0 / (i as f64)).pow(2);
+        dbg!(i);
     }
-    println!("Sum: {}, Res: {}", sum, RES);
-    assert!((sum - RES).abs() < EPS)
+    let err = (sum.clone() - RES.clone()).abs();
+    println!("Sum: {:?}\nRes: {:?}\nErr: {:?}\nEps: {:?}", &sum, &*RES, &err, &*EPS);
+    assert!(err < EPS.clone());
 }

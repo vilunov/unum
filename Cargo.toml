@@ -8,6 +8,9 @@ build = "build.rs"
 [lib]
 crate-type = ["lib", "dylib", "staticlib"]
 
+[profile.release]
+lto = true
+
 [dependencies]
 bitvec = "0.15.0"
 nalgebra = "0.18.0"

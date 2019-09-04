@@ -38,7 +38,7 @@ macro_rules! test {
             let lhs = Posit { bits: $left };
             let rhs = Posit { bits: $right };
             let res = lhs / rhs;
-            assert_eq!(res.bits, $expected);
+            assert_eq!(res.bits[..$expected.len()], $expected);
         }
     };
     ($name: ident: ($left: expr) + ($right: expr) = ($expected: expr)) => {
@@ -233,6 +233,11 @@ test! { lt_3:
 
 test! { lt_4:
     (bitvec![1, 1, 0, 0, 0, 1]) < (bitvec![1, 1, 0, 0, 0])
+}
+
+test! { lt_5:
+    (bitvec![0, 0, 0, 0, 0, 1, 1, 0, 0]) <
+    (bitvec![0, 0, 0, 0, 0, 1, 1, 0, 1])
 }
 
 test! { pow_1:

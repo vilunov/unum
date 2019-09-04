@@ -9,13 +9,13 @@ fn half_divide_method(
     f: impl Fn(f64) -> f64,
     iterations: u32,
 ) -> f64 {
-    let mut e = 0.5;
+    let e = 0.5;
     let mut x = (a + b) / 2.0;
     let mut i = 0;
     while f(x) >= stop && i < iterations {
         x = (a + b) / 2.0;
-        let mut f1 = f(x - e);
-        let mut f2 = f(x + e);
+        let f1 = f(x - e);
+        let f2 = f(x + e);
         if f1 < f2 {
             b = x;
         } else {

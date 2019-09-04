@@ -1,5 +1,3 @@
-use nalgebra::Vector6;
-
 const EPS: f64 = 10e-18;
 const RES: f64 = 1.644725755214774951;
 const LIMIT: u32 = 4801;
