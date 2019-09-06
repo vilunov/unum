@@ -9,27 +9,31 @@ lazy_static! {
 }
 
 fn half_divide_method(
-    mut a: Posit,
-    mut b: Posit,
+    mut left: Posit,
+    mut right: Posit,
     stop: Posit,
     f: impl Fn(Posit) -> Posit,
     iterations: u32,
 ) -> Posit {
-    let e: Posit = 0.5.into();
-    let mut x: Posit = (a.clone() + b.clone()) / 2.0.into();
+    let mut x: Posit = (left.clone() + right.clone()) / 2.0.into();
     let mut i = 0;
     while f(x.clone()) >= stop && i < iterations {
-        x = (a.clone() + b.clone()) / 2.0.into();
-        let f1 = f(x.clone() - e.clone());
-        let f2 = f(x.clone() + e.clone());
-        if f1 < f2 {
-            b = x.clone();
-        } else {
-            a = x.clone();
+        if (right.clone() - left.clone()) < EPS.clone() {
+            break;
         }
+        let left_third = left.clone() + (right.clone() - left.clone()) / 3.0.into();
+        let right_third = right.clone() - (right.clone() - left.clone()) / 3.0.into();
+        let f1 = f(left_third.clone());
+        let f2 = f(right_third.clone());
+        if f1 < f2 {
+            right = right_third;
+        } else {
+            left = left_third;
+        }
+        x = (left.clone() + right.clone()) / 2.0.into();
         i += 1;
     }
-    (a + b) / 2.0.into()
+    x
 }
 
 fn parabola(x: Posit) -> Posit {

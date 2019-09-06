@@ -73,6 +73,10 @@ impl Add for Regime {
 }
 
 impl Posit {
+    pub fn truncate(&mut self, len: usize) {
+        self.bits.truncate(len)
+    }
+
     pub fn nar() -> Self {
         Posit { bits: bitvec![1] }
     }
@@ -322,6 +326,9 @@ impl Add<Posit> for Posit {
             l_exp = l_exp * 2 + l_bits.next().unwrap_or(false) as usize;
             r_exp = r_exp * 2 + r_bits.next().unwrap_or(false) as usize;
         }
+        //Left: 11100
+        //Было: 1101
+        //Стал: 01101
         let shift = (regime.value << ES) + l_exp - r_exp;
 
         // Fractions
@@ -416,11 +423,14 @@ impl Sub<Posit> for Posit {
             r_exp = r_exp * 2 + r_bits.next().unwrap_or(false) as usize;
         }
 
+        //   11000
+        // -  1001
+        // = 01111
         //Shift
         let shift = (regime.value << ES) + l_exp - r_exp;
 
         // Fractions
-        let mut l_frac: BitVec = bitvec![0, 1];
+        let mut l_frac: BitVec = bitvec![1, 1];
         l_frac.extend(l_bits);
 
         let mut r_frac: BitVec = bitvec![0; shift + 1];
@@ -439,7 +449,7 @@ impl Sub<Posit> for Posit {
         let mut o_exp = l_exp;
         let mut o_regime = l_regime;
         let mut o_exp_shift = 0;
-        if o_frac[0] {
+        if !o_frac[0] {
             o_exp_shift += 1;
         }
         o_frac <<= 1;
